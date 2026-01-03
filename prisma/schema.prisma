@@ -1,0 +1,211 @@
+// Prisma Schema for Modern CMS
+// 从 WordPress 迁移的数据结构设计
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============ 用户系统 ============
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String
+  avatar        String?
+  role          String    @default("AUTHOR") // ADMIN, EDITOR, AUTHOR
+  bio           String?
+
+  posts         Post[]
+  sessions      Session[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+// ============ 内容系统 ============
+model Post {
+  id            String      @id @default(cuid())
+  title         String
+  slug          String      @unique
+  excerpt       String?     // 摘要
+  content       String      // Markdown 或 HTML
+  contentHtml   String?     // 渲染后的 HTML (缓存)
+
+  featuredImage String?     // 特色图片 URL
+
+  status        String      @default("DRAFT") // DRAFT, PUBLISHED, ARCHIVED
+  visibility    String      @default("PUBLIC") // PUBLIC, PRIVATE, PASSWORD
+
+  authorId      String
+  author        User        @relation(fields: [authorId], references: [id])
+
+  categoryId    String?
+  category      Category?   @relation(fields: [categoryId], references: [id])
+
+  tags          PostTag[]
+
+  // SEO 字段
+  seoTitle      String?
+  seoDesc       String?
+  seoKeywords   String?
+
+  // 统计
+  viewCount     Int         @default(0)
+
+  // 原 WordPress ID (用于迁移)
+  wpId          Int?        @unique
+
+  publishedAt   DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([status, publishedAt])
+  @@index([categoryId])
+  @@index([authorId])
+}
+
+model Category {
+  id          String     @id @default(cuid())
+  name        String
+  slug        String     @unique
+  description String?
+
+  parentId    String?
+  parent      Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryHierarchy")
+
+  posts       Post[]
+
+  wpId        Int?       @unique
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Tag {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  description String?
+
+  posts       PostTag[]
+
+  wpId        Int?      @unique
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model PostTag {
+  postId      String
+  post        Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tagId       String
+  tag         Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+}
+
+// ============ 页面系统 ============
+model Page {
+  id            String      @id @default(cuid())
+  title         String
+  slug          String      @unique
+  content       String
+  contentHtml   String?
+
+  featuredImage String?
+  template      String      @default("default")
+
+  status        String      @default("DRAFT") // DRAFT, PUBLISHED, ARCHIVED
+
+  parentId      String?
+  parent        Page?       @relation("PageHierarchy", fields: [parentId], references: [id])
+  children      Page[]      @relation("PageHierarchy")
+
+  menuOrder     Int         @default(0)
+
+  seoTitle      String?
+  seoDesc       String?
+
+  wpId          Int?        @unique
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+// ============ 媒体库 ============
+model Media {
+  id          String    @id @default(cuid())
+  filename    String
+  url         String
+  mimeType    String
+  size        Int
+  width       Int?
+  height      Int?
+  alt         String?
+  caption     String?
+
+  wpId        Int?      @unique
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// ============ 网站设置 ============
+model Setting {
+  id          String    @id @default(cuid())
+  key         String    @unique
+  value       String
+  type        String    @default("string") // string, json, number, boolean
+
+  updatedAt   DateTime  @updatedAt
+}
+
+// ============ 导航菜单 ============
+model Menu {
+  id          String     @id @default(cuid())
+  name        String
+  slug        String     @unique
+  items       MenuItem[]
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model MenuItem {
+  id          String      @id @default(cuid())
+  title       String
+  url         String?
+  target      String      @default("_self")
+
+  menuId      String
+  menu        Menu        @relation(fields: [menuId], references: [id], onDelete: Cascade)
+
+  parentId    String?
+  parent      MenuItem?   @relation("MenuItemHierarchy", fields: [parentId], references: [id])
+  children    MenuItem[]  @relation("MenuItemHierarchy")
+
+  order       Int         @default(0)
+
+  // 关联内容
+  postId      String?
+  pageId      String?
+  categoryId  String?
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
